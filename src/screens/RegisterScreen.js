@@ -13,7 +13,7 @@ import {
 import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-
+import { supabase } from '../supabaseClient';
 const registerSchema = z
   .object({
     name: z
@@ -55,10 +55,36 @@ export default function RegisterScreen({ navigation }) {
     },
   });
 
-  function handleRegister(data) {
-    console.log('Dados do cadastro:', data);
+  async function handleRegister(data) {
+    // 1. Criar usuário no Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+    });
 
-    
+    if (authError) {
+      alert('Erro no cadastro: ' + authError.message);
+      return;
+    }
+
+    // 2. Salvar nome na tabela 'profiles'
+    if (authData?.user) {
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([
+          {
+            id: authData.user.id,
+            full_name: data.name,
+            role: 'patient',
+          },
+        ]);
+
+      if (profileError) {
+        console.error('Erro ao salvar perfil:', profileError.message);
+      }
+    }
+
+    alert('Conta criada com sucesso!');
     navigation.navigate('Login');
   }
 
