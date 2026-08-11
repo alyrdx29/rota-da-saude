@@ -14,7 +14,7 @@ import {
 import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-
+import { supabase } from '../supabaseClient';
 const loginSchema = z.object({
   email: z
     .string()
@@ -40,13 +40,19 @@ export default function LoginScreen({ navigation }) {
     },
   });
 
-  function handleLogin(data) {
-    console.log('Dados do login:', data);
+ async function handleLogin(data) {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: data.email,
+      password: data.password,
+    });
 
-    
+    if (error) {
+      alert('Falha ao entrar: ' + error.message);
+      return;
+    }
+
     navigation.navigate('Home');
   }
-
   return (
     <KeyboardAvoidingView
       style={styles.container}
