@@ -9,7 +9,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-
+import { supabase } from '../supabaseClient';
 export default function ChatAIScreen({ navigation }) {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([
@@ -25,14 +25,17 @@ export default function ChatAIScreen({ navigation }) {
     },
   ]);
 
-  function sendMessage() {
+ async function sendMessage() {
     if (!message.trim()) {
       return;
     }
 
+    const userMessageText = message.trim();
+
+    // Adiciona a mensagem imediatamente na tela (UI)
     const newMessage = {
       id: Date.now(),
-      text: message.trim(),
+      text: userMessageText,
       sender: 'user',
     };
 
@@ -43,7 +46,22 @@ export default function ChatAIScreen({ navigation }) {
 
     setMessage('');
 
-    // A conexão com a IA será adicionada depois.
+    // Salva a mensagem no Supabase
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (user) {
+      const { error } = await supabase.from('messages').insert([
+        {
+          user_id: user.id,
+          text: userMessageText,
+          sender: 'user',
+        },
+      ]);
+
+      if (error) {
+        console.error('Erro ao salvar mensagem no Supabase:', error.message);
+      }
+    }
   }
 
   return (
