@@ -9,7 +9,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-
+import { supabase } from '../supabaseClient';
 export default function NurseChatScreen({ navigation }) {
   const [message, setMessage] = useState('');
 
@@ -27,15 +27,16 @@ export default function NurseChatScreen({ navigation }) {
       time: 'Agora',
     },
   ]);
-
-  function sendMessage() {
+async function sendMessage() {
     if (!message.trim()) {
       return;
     }
 
+    const userMessageText = message.trim();
+
     const newMessage = {
       id: Date.now(),
-      text: message.trim(),
+      text: userMessageText,
       sender: 'user',
       time: 'Agora',
     };
@@ -46,8 +47,24 @@ export default function NurseChatScreen({ navigation }) {
     ]);
 
     setMessage('');
-  }
 
+    // Salva a mensagem no Supabase
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (user) {
+      const { error } = await supabase.from('messages').insert([
+        {
+          user_id: user.id,
+          text: userMessageText,
+          sender: 'user',
+        },
+      ]);
+
+      if (error) {
+        console.error('Erro ao salvar mensagem:', error.message);
+      }
+    }
+  }
   return (
     <KeyboardAvoidingView
       style={styles.container}
