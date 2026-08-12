@@ -9,13 +9,17 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { GoogleGenAI } from '@google/genai';
 import { supabase } from '../supabaseClient';
+
+const ai = new GoogleGenAI({ apiKey: 'AQ.AbBRN6LbPH9Qc1mhhg6XRN0r9vKabmFbV-QXjXy75LMRAf6v1w' });
+
 export default function ChatAIScreen({ navigation }) {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState([
     {
       id: 1,
-      text: 'Olá! Eu sou o assistente do Rota da Saúde. 👋',
+      text: 'Olá! Eu sou o assistente do Rota da Saúde. 🩺',
       sender: 'ai',
     },
     {
@@ -25,42 +29,48 @@ export default function ChatAIScreen({ navigation }) {
     },
   ]);
 
- async function sendMessage() {
-    if (!message.trim()) {
-      return;
-    }
+  async function sendMessage() {
+    if (!message.trim()) return;
 
     const userMessageText = message.trim();
 
-    // Adiciona a mensagem imediatamente na tela (UI)
-    const newMessage = {
-      id: Date.now(),
-      text: userMessageText,
-      sender: 'user',
-    };
-
-    setMessages((currentMessages) => [
-      ...currentMessages,
-      newMessage,
+    setMessages((prev) => [
+      ...prev,
+      { id: Date.now(), text: userMessageText, sender: 'user' },
     ]);
-
     setMessage('');
 
-    // Salva a mensagem no Supabase
     const { data: { user } } = await supabase.auth.getUser();
-
     if (user) {
-      const { error } = await supabase.from('messages').insert([
-        {
-          user_id: user.id,
-          text: userMessageText,
-          sender: 'user',
+      await supabase.from('messages').insert([
+        { user_id: user.id, text: userMessageText, sender: 'user' },
+      ]);
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: userMessageText,
+        config: {
+          systemInstruction:
+            'Você é o assistente virtual do Rota da Saúde. Faça triagens virtuais com empatia e clareza, avisando sempre que não substitui uma consulta médica.',
         },
+      });
+
+      const aiReplyText = response.text;
+
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now() + 1, text: aiReplyText, sender: 'ai' },
       ]);
 
-      if (error) {
-        console.error('Erro ao salvar mensagem no Supabase:', error.message);
+      if (user) {
+        await supabase.from('messages').insert([
+          { user_id: user.id, text: aiReplyText, sender: 'ai' },
+        ]);
       }
+    } catch (error) {
+      console.error('Erro ao gerar resposta da IA:', error);
     }
   }
 
@@ -69,7 +79,6 @@ export default function ChatAIScreen({ navigation }) {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* Cabeçalho */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -82,81 +91,57 @@ export default function ChatAIScreen({ navigation }) {
           <View style={styles.aiAvatar}>
             <Text style={styles.aiAvatarText}>🤖</Text>
           </View>
-
           <View>
-            <Text style={styles.headerTitle}>
-              Triagem Rápida
-            </Text>
-
-            <Text style={styles.headerSubtitle}>
-              Assistente virtual
-            </Text>
+            <Text style={styles.headerTitle}>Triagem Rápida</Text>
+            <Text style={styles.headerSubtitle}>Assistente virtual</Text>
           </View>
         </View>
       </View>
 
-      {/* Aviso */}
-      <View style={styles.warning}>
-        <Text style={styles.warningIcon}>ℹ️</Text>
-
-        <Text style={styles.warningText}>
-          Esta ferramenta oferece apenas uma orientação inicial e
-          não substitui uma avaliação feita por um profissional de
-          saúde.
+      <View style={styles.infoBar}>
+        <Text style={styles.infoIcon}>ℹ️</Text>
+        <Text style={styles.infoText}>
+          Esta ferramenta oferece apenas uma orientação inicial e não substitui
+          uma avaliação feita por um profissional de saúde.
         </Text>
       </View>
 
-      {/* Mensagens */}
       <ScrollView
         style={styles.messagesContainer}
         contentContainerStyle={styles.messagesContent}
-        showsVerticalScrollIndicator={false}
       >
-        {messages.map((item) => (
-          <View
-            key={item.id}
-            style={[
-              styles.messageBubble,
-              item.sender === 'user'
-                ? styles.userBubble
-                : styles.aiBubble,
-            ]}
-          >
-            <Text
+        {messages.map((item) => {
+          const isUser = item.sender === 'user';
+          return (
+            <View
+              key={item.id}
               style={[
-                styles.messageText,
-                item.sender === 'user'
-                  ? styles.userMessageText
-                  : styles.aiMessageText,
+                styles.messageBubble,
+                isUser ? styles.userBubble : styles.aiBubble,
               ]}
             >
-              {item.text}
-            </Text>
-          </View>
-        ))}
+              <Text
+                style={[
+                  styles.messageText,
+                  isUser ? styles.userMessageText : styles.aiMessageText,
+                ]}
+              >
+                {item.text}
+              </Text>
+            </View>
+          );
+        })}
       </ScrollView>
 
-      {/* Campo de mensagem */}
-      <View style={styles.inputArea}>
+      <View style={styles.inputContainer}>
         <TextInput
           style={styles.input}
           placeholder="Descreva seus sintomas..."
-          placeholderTextColor="#8B9995"
           value={message}
           onChangeText={setMessage}
-          multiline
-          maxLength={500}
         />
-
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            !message.trim() && styles.sendButtonDisabled,
-          ]}
-          onPress={sendMessage}
-          disabled={!message.trim()}
-        >
-          <Text style={styles.sendText}>➤</Text>
+        <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
+          <Text style={styles.sendButtonText}>➔</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -166,166 +151,128 @@ export default function ChatAIScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5FAF8',
+    backgroundColor: '#F8FAF9',
   },
-
   header: {
-    height: 85,
-    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingHorizontal: 16,
+    paddingTop: 48,
+    paddingBottom: 16,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E1ECE8',
+    borderBottomColor: '#E2E8F0',
   },
-
   backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginRight: 12,
   },
-
   backText: {
-    fontSize: 35,
-    color: '#2E8B72',
-    lineHeight: 35,
+    fontSize: 28,
+    color: '#0D5C3A',
   },
-
   headerInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 5,
   },
-
   aiAvatar: {
-    width: 45,
-    height: 45,
-    borderRadius: 23,
-    backgroundColor: '#E6F4EF',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E6F4EA',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
-
   aiAvatarText: {
-    fontSize: 22,
+    fontSize: 18,
   },
-
   headerTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: 'bold',
-    color: '#183B35',
+    color: '#1A202C',
   },
-
   headerSubtitle: {
     fontSize: 12,
-    color: '#6B7C77',
-    marginTop: 2,
+    color: '#718096',
   },
-
-  warning: {
+  infoBar: {
     flexDirection: 'row',
-    backgroundColor: '#FFF9E8',
-    margin: 12,
+    alignItems: 'center',
+    backgroundColor: '#FEFCBF',
     padding: 12,
-    borderRadius: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 8,
   },
-
-  warningIcon: {
-    fontSize: 17,
+  infoIcon: {
     marginRight: 8,
   },
-
-  warningText: {
+  infoText: {
     flex: 1,
-    color: '#75642E',
     fontSize: 11,
-    lineHeight: 16,
+    color: '#744210',
   },
-
   messagesContainer: {
     flex: 1,
+    paddingHorizontal: 16,
   },
-
   messagesContent: {
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+    paddingVertical: 16,
   },
-
   messageBubble: {
-    maxWidth: '82%',
-    paddingHorizontal: 15,
-    paddingVertical: 11,
-    borderRadius: 17,
+    maxWidth: '80%',
+    padding: 12,
+    borderRadius: 16,
     marginBottom: 10,
   },
-
+  userBubble: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#0D5C3A',
+    borderBottomRightRadius: 4,
+  },
   aiBubble: {
     alignSelf: 'flex-start',
     backgroundColor: '#FFFFFF',
     borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
-
-  userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#2E8B72',
-    borderBottomRightRadius: 4,
-  },
-
   messageText: {
     fontSize: 14,
     lineHeight: 20,
   },
-
-  aiMessageText: {
-    color: '#29443E',
-  },
-
   userMessageText: {
     color: '#FFFFFF',
   },
-
-  inputArea: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#E1ECE8',
+  aiMessageText: {
+    color: '#2D3748',
   },
-
+  inputContainer: {
+    flexDirection: 'row',
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
   input: {
     flex: 1,
-    minHeight: 45,
-    maxHeight: 100,
-    backgroundColor: '#F1F6F4',
-    borderRadius: 22,
+    backgroundColor: '#EDF2F7',
+    borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 8,
     fontSize: 14,
-    color: '#183B35',
     marginRight: 8,
   },
-
   sendButton: {
-    width: 45,
-    height: 45,
-    borderRadius: 23,
-    backgroundColor: '#2E8B72',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#0D5C3A',
     justifyContent: 'center',
     alignItems: 'center',
   },
-
-  sendButtonDisabled: {
-    backgroundColor: '#B8CCC6',
-  },
-
-  sendText: {
+  sendButtonText: {
     color: '#FFFFFF',
-    fontSize: 21,
-    fontWeight: 'bold',
+    fontSize: 16,
   },
 });
